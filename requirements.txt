@@ -1,0 +1,52 @@
+# fastapi.middleware.cors
+fastapi
+python-multipart
+uvicorn[standard]
+
+# LangChain and related modules
+langchain>=0.2.0
+langchain-openai>=0.1.0
+langchain-community>=0.4.0
+langchain-chroma==0.2.6
+langchain-text-splitters
+
+# Data processing
+pandas
+numpy
+scikit-learn
+
+# PDF processing
+PyPDF2
+pdfplumber
+pytesseract
+pdf2image
+Pillow
+
+# Environment variables
+python-dotenv
+
+# Database and search
+chromadb
+rank-bm25
+
+# OpenAI
+openai>=1.0.0
+
+# Pydantic
+pydantic>=2.11.9
+pydantic-core>=2.33.2
+pydantic-settings>=2.10.1
+
+# Authentication & Security
+bcrypt>=4.0.1
+Authlib
+itsdangerous
+PyJWT
+slowapi
+email-validator
+
+# Telemetry
+opentelemetry-distro
+opentelemetry-instrumentation
+opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp

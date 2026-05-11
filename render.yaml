@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: formulary-agent-api
+    env: docker
+    plan: free
+    region: oregon # Choose the region closest to you
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false # You will set this manually in Render Dashboard
+      - key: SESSION_SECRET_KEY
+        generateValue: true # Render will generate a secure random key for you
+      - key: PORT
+        value: 8000
+      - key: CORS_ORIGINS
+        value: '["*"]' # Update this later with your actual production URL for better security
+    dockerContext: .
+    dockerfilePath: ./Dockerfile

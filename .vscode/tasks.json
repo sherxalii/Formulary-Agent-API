@@ -1,0 +1,21 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Backend: Start FastAPI (Dev)",
+			"type": "shell",
+			"command": "uvicorn",
+			"args": [
+				"app.main:app",
+				"--host",
+				"0.0.0.0",
+				"--port",
+				"8000",
+				"--reload"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}
