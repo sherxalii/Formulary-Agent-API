@@ -1,33 +1,27 @@
 from fastapi import APIRouter, Depends, Body
-import sqlite3
 from app.core.config import settings
 from app.services.database_service import DatabaseService
 from app.core.dependencies import get_database_service, get_unified_drug_system
 from app.models.schemas import ToggleSettingRequest, CreateApiKeyRequest, LogoutSessionRequest
 from datetime import datetime, timedelta
 import random
+from app.core.database import engine
+from app.models.audit import AuditLog
+from app.models.user import User
+from sqlmodel import Session, select, func
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 def _log_action(user: str, action: str, target: str, type: str, status: str = "Success"):
     """Helper to log administrative actions to the database."""
     try:
-        conn = sqlite3.connect(settings.USERS_DB)
-        conn.execute('''CREATE TABLE IF NOT EXISTS audit_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user TEXT,
-            action TEXT,
-            target TEXT,
-            type TEXT,
-            status TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''')
-        conn.execute('''
-            INSERT INTO audit_logs (user, action, target, type, status)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user, action, target, type, status))
-        conn.commit()
-        conn.close()
+        with Session(engine) as session:
+            log = AuditLog(user=user, action=action, target=target, type=type, status=status)
+            session.add(log)
+            session.commit()
     except Exception as e:
         print(f"Logging failed: {e}")
 
@@ -43,11 +37,8 @@ async def get_dashboard_stats(
     # 2. Active Users
     user_count = 0
     try:
-        conn = sqlite3.connect(settings.USERS_DB)
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM users')
-        user_count = cursor.fetchone()[0]
-        conn.close()
+        with Session(engine) as session:
+            user_count = session.exec(select(func.count()).select_from(User)).one()
     except:
         user_count = 12
         
@@ -75,29 +66,25 @@ async def get_dashboard_stats(
     # 7. Recent Activity from REAL Audit Logs
     activities = []
     try:
-        conn = sqlite3.connect(settings.USERS_DB)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 5')
-        rows = cursor.fetchall()
-        for row in rows:
-            ts = datetime.fromisoformat(row['timestamp'].replace(' ', 'T'))
-            delta = datetime.now() - ts
-            if delta.seconds < 3600:
-                time_str = f"{delta.seconds // 60} mins ago"
-            elif delta.days == 0:
-                time_str = f"{delta.seconds // 3600} hours ago"
-            else:
-                time_str = f"{delta.days} days ago"
+        with Session(engine) as session:
+            statement = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(5)
+            logs = session.exec(statement).all()
+            for log in logs:
+                delta = datetime.utcnow() - log.timestamp
+                if delta.seconds < 3600:
+                    time_str = f"{delta.seconds // 60} mins ago"
+                elif delta.days == 0:
+                    time_str = f"{delta.seconds // 3600} hours ago"
+                else:
+                    time_str = f"{delta.days} days ago"
 
-            activities.append({
-                "id": row['id'],
-                "user": row['user'],
-                "action": row['action'],
-                "time": time_str,
-                "type": row['type']
-            })
-        conn.close()
+                activities.append({
+                    "id": log.id,
+                    "user": log.user,
+                    "action": log.action,
+                    "time": time_str,
+                    "type": log.type
+                })
     except:
         pass
     
@@ -122,41 +109,40 @@ async def get_dashboard_stats(
 
 @router.get("/admin/users")
 async def list_users():
-    users = []
+    users_list = []
     stats = {"total": 0, "active": 0, "pending": 0, "suspended": 0, "activeTrend": "+ 0 this week"}
     try:
-        conn = sqlite3.connect(settings.USERS_DB)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM users ORDER BY created_at DESC')
-        rows = cursor.fetchall()
-        colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316"]
-        for i, row in enumerate(rows):
-            status = "Active" if row['is_active'] else "Suspended"
-            if not row['is_verified']: status = "Pending"
-            role = row['role']
-            if role == "Administrator": role = "Admin"
-            joined = row['created_at'][:10] if row['created_at'] else "N/A"
-            users.append({
-                "id": row['id'],
-                "name": row['name'] or "Unknown",
-                "email": row['email'],
-                "role": role,
-                "specialty": row['specialty'] or "N/A",
-                "joined": joined,
-                "searches": row['search_count'] or 0,
-                "status": status,
-                "color": colors[i % len(colors)]
-            })
-            stats["total"] += 1
-            if status == "Active": stats["active"] += 1
-            elif status == "Pending": stats["pending"] += 1
-            elif status == "Suspended": stats["suspended"] += 1
-        stats["activeTrend"] = f"+ {random.randint(1, 5)} this week"
-        conn.close()
+        with Session(engine) as session:
+            statement = select(User).order_by(User.created_at.desc())
+            db_users = session.exec(statement).all()
+            
+            colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316"]
+            for i, user in enumerate(db_users):
+                status = "Active" if user.is_active else "Suspended"
+                if not user.is_verified: status = "Pending"
+                role = user.role
+                if role == "Administrator": role = "Admin"
+                joined = user.created_at.strftime('%Y-%m-%d') if user.created_at else "N/A"
+                
+                users_list.append({
+                    "id": user.id,
+                    "name": user.name or "Unknown",
+                    "email": user.email,
+                    "role": role,
+                    "specialty": user.specialty or "N/A",
+                    "joined": joined,
+                    "searches": user.search_count or 0,
+                    "status": status,
+                    "color": colors[i % len(colors)]
+                })
+                stats["total"] += 1
+                if status == "Active": stats["active"] += 1
+                elif status == "Pending": stats["pending"] += 1
+                elif status == "Suspended": stats["suspended"] += 1
+            stats["activeTrend"] = f"+ {random.randint(1, 5)} this week"
     except Exception as e:
-        print(f"Error fetching users: {e}")
-    return {"success": True, "users": users, "stats": stats}
+        logger.error(f"Error fetching users: {e}")
+    return {"success": True, "users": users_list, "stats": stats}
 
 @router.get("/admin/drugs")
 async def list_admin_drugs(unified=Depends(get_unified_drug_system)):

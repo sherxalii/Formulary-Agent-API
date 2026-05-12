@@ -1,5 +1,6 @@
 # fastapi.middleware.cors
 fastapi
+sqlmodel
 python-multipart
 uvicorn[standard]
 
@@ -50,3 +51,5 @@ opentelemetry-distro
 opentelemetry-instrumentation
 opentelemetry-instrumentation-fastapi
 opentelemetry-exporter-otlp
+psycopg2-binary
+fastapi-mail

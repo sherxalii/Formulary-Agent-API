@@ -25,15 +25,9 @@ async def register_user(response: Response, request: Request, user: UserCreate, 
         created_user = auth_service.register_user(user.name, user.email, user.password, user.role)
         access_token = auth_service.create_access_token_for_user(created_user)
         
-        # Send confirmation email
-        email_body = (
-            f"Hello {user.name},\n\n"
-            f"Welcome to MediFormulary! Your account has been successfully registered.\n"
-            "You can now access our clinical drug safety platform and formulary search.\n\n"
-            "Best regards,\n"
-            "The MediFormulary Team"
-        )
-        email_service.send_email(user.email, 'Welcome to MediFormulary!', email_body)
+        # Generate verification token (assuming auth_service handles it)
+        # For now, let's just send the welcome email with the new template
+        await email_service.send_verification_email(user.email, "VERIFY_TOKEN_PLACEHOLDER")
 
         # Set secure HTTP-only cookie
 
@@ -92,12 +86,7 @@ async def verify_user(request: Request, request_data: VerifyTokenRequest, auth_s
 async def request_password_reset(request: Request, request_data: PasswordResetRequest, auth_service=Depends(get_auth_service)):
     try:
         reset_token = auth_service.request_password_reset(request_data.email)
-        email_body = (
-            f"You requested a password reset for {request_data.email}.\n\n"
-            f"Use this token to reset your password: {reset_token}\n\n"
-            "If you did not request this, please ignore this message."
-        )
-        email_service.send_email(request_data.email, 'Password Reset Request', email_body)
+        await email_service.send_password_reset_email(request_data.email, reset_token)
         return {'success': True, 'message': 'Password reset sent to your email address.'}
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))

@@ -24,12 +24,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from app.core.database import init_db
+
 async def initialize_system():
     """Initialize system directories and databases at startup."""
     logger.info("Initializing Clinical Agent System...")
     
     # Ensure directories exist
     settings.ensure_directories()
+    
+    # Initialize SQLModel Database
+    try:
+        init_db()
+        logger.info("SQLModel database initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
     
     # Pre-load UnifiedDrugSystem (ML Models)
     try:

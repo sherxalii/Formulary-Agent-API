@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import * as api from '../api/apiService';
 import { toast } from 'react-hot-toast';
+import { motion } from 'framer-motion';
 import DrugCard from '../components/DrugCard';
 import QuickFormularyModal from '../components/QuickFormularyModal';
 
@@ -498,6 +499,7 @@ const Search = () => {
                 }}
                 style={{
                   width: '100%',
+                  height: '52px',
                   border: 'none',
                   fontSize: '1.0625rem',
                   fontWeight: 500,
@@ -506,7 +508,7 @@ const Search = () => {
                   outline: 'none'
                 }}
               />
-              
+
               {/* Autocomplete Dropdown */}
               {showSuggestions && suggestions.length > 0 && (
                 <div style={{
@@ -560,35 +562,36 @@ const Search = () => {
             </div>
 
             <button
-              className="btn-search-premium"
+              className="btn-premium"
               onClick={handleSearch}
               disabled={isLoading}
               style={{
-                background: 'linear-gradient(135deg, #16a085 0%, #12876f 100%)',
-                color: 'white',
-                borderRadius: '16px',
-                padding: '12px 32px',
+                minWidth: '160px',
+                height: '52px',
+                maxHeight: '52px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
-                border: 'none',
-                fontSize: '1rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 10px 25px rgba(22, 160, 133, 0.2)',
-                transition: 'all 0.3s ease'
+                justifyContent: 'center',
+                padding: '0 24px'
               }}
             >
-              {isLoading ? '...' : <><SearchIcon size={18} strokeWidth={2.5} /> Search</>}
+              {isLoading ? (
+                <div className="spinner" style={{ margin: 0 }}></div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <SearchIcon size={20} strokeWidth={2.5} />
+                  <span>Search</span>
+                </div>
+              )}
             </button>
           </div>
 
           {/* Recent Searches */}
           {recentSearches.length > 0 && (
-            <div style={{ 
-              marginTop: '1.5rem', 
-              display: 'flex', 
-              alignItems: 'center', 
+            <div style={{
+              marginTop: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
               justifyContent: 'center',
               gap: '12px',
               flexWrap: 'wrap'
@@ -733,7 +736,17 @@ const Search = () => {
                   type="button"
                   onClick={() => addField('conditions', conditionInput)}
                   className="btn-search"
-                  style={{ padding: '0 16px', fontSize: '0.875rem', minWidth: 'auto', background: 'var(--accent-color)' }}
+                  style={{
+                    padding: '0 20px',
+                    fontSize: '0.875rem',
+                    minWidth: 'auto',
+                    background: 'var(--accent-color)',
+                    color: 'white',
+                    fontWeight: 700,
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
                   Add
                 </button>
@@ -771,7 +784,17 @@ const Search = () => {
                   type="button"
                   onClick={() => addField('current_medications', medicationInput)}
                   className="btn-search"
-                  style={{ padding: '0 16px', fontSize: '0.875rem', minWidth: 'auto', background: 'var(--secondary-color)' }}
+                  style={{
+                    padding: '0 20px',
+                    fontSize: '0.875rem',
+                    minWidth: 'auto',
+                    background: 'var(--secondary-color)',
+                    color: 'white',
+                    fontWeight: 700,
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
                   Add
                 </button>
@@ -809,7 +832,17 @@ const Search = () => {
                   type="button"
                   onClick={() => addField('allergies', allergyInput)}
                   className="btn-search"
-                  style={{ padding: '0 16px', fontSize: '0.875rem', minWidth: 'auto', background: '#ef4444' }}
+                  style={{
+                    padding: '0 20px',
+                    fontSize: '0.875rem',
+                    minWidth: 'auto',
+                    background: '#ef4444',
+                    color: 'white',
+                    fontWeight: 700,
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
                   Add
                 </button>
@@ -890,6 +923,7 @@ const Search = () => {
                 alcohol_use: 'no',
                 age_group: 'adult'
               })}
+              className="hover-lift"
               style={{
                 padding: '10px 24px',
                 borderRadius: '12px',
@@ -897,13 +931,17 @@ const Search = () => {
                 color: '#ef4444',
                 fontWeight: 700,
                 border: '1px solid #fee2e2',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'all 0.2s'
               }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#fef2f2'}
+              onMouseOut={(e) => e.currentTarget.style.background = 'white'}
             >
               Clear All Data
             </button>
             <button
               onClick={() => setExpandedForm(false)}
+              className="hover-lift"
               style={{
                 padding: '10px 24px',
                 borderRadius: '12px',
@@ -914,8 +952,11 @@ const Search = () => {
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px'
+                gap: '8px',
+                transition: 'all 0.2s'
               }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+              onMouseOut={(e) => e.currentTarget.style.background = '#f8fafc'}
             >
               <ChevronUp size={18} />
               Hide Profile Form
@@ -1038,7 +1079,7 @@ const Search = () => {
       )}
 
       <div className="search-layout" style={{ marginTop: '2rem' }}>
-        <aside className="filters-sidebar">
+        <aside className="filters-sidebar glass-panel" style={{ padding: '20px' }}>
           <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e2e8f0' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Search Optimization</h3>
             <button
@@ -1159,13 +1200,11 @@ const Search = () => {
                   .filter(drug => !searchMeta.safestRecommendation || drug.safety_score === undefined || drug.safety_score >= 80)
                   .sort((a, b) => (b.safety_score || 0) - (a.safety_score || 0))
                   .map((drug, index) => (
-                    <div
+                    <motion.div
                       key={drug.id}
-                      style={{
-                        animation: `slideUpFade 0.4s ease-out forwards ${index * 0.1}s`,
-                        opacity: 0,
-                        transform: 'translateY(20px)'
-                      }}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.05 }}
                     >
                       <DrugCard
                         drug={drug}
@@ -1173,7 +1212,7 @@ const Search = () => {
                         onView={handleQuickView}
                         onBookmark={toggleBookmark}
                       />
-                    </div>
+                    </motion.div>
                   ))}
               </div>
             )}

@@ -3,6 +3,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional, List
 import os
+from dotenv import load_dotenv
+
+# Explicitly load .env file
+load_dotenv()
 
 class Settings(BaseSettings):
     # Base directories
@@ -47,6 +51,7 @@ class Settings(BaseSettings):
     
     # Auth Config
     USERS_DB: str = str(DATA_DIR / "users.db")
+    SQLALCHEMY_DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/users.db")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "super-secret-key-for-local-dev-change-in-prod")
     JWT_SECRET: str = os.getenv("JWT_SECRET", SECRET_KEY)
     ALGORITHM: str = "HS256"
@@ -61,6 +66,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "True").lower() in ("1", "true", "yes")
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "noreply@mediformulary.com")
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
     
     model_config = SettingsConfigDict(
         env_file=".env", 
@@ -75,3 +81,4 @@ class Settings(BaseSettings):
             directory.mkdir(parents=True, exist_ok=True)
 
 settings = Settings()
+print(f"[DEBUG] Using Database URL: {settings.SQLALCHEMY_DATABASE_URL}")

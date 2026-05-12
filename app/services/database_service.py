@@ -2,12 +2,14 @@ import os
 import shutil
 import zipfile
 import logging
-import sqlite3
 import json
 from typing import List, Dict, Any, Optional, Tuple
 from app.core.config import settings
 from backend.formulary_drug_rag import FormularyDrugRAG
 from app.services.rag_service import RagManager
+from app.core.database import engine
+from app.models.drug import ProcessedDrug
+from sqlmodel import select, delete, Session, func, or_
 
 logger = logging.getLogger(__name__)
 
@@ -15,28 +17,7 @@ class DatabaseService:
     def __init__(self, rag_manager: RagManager):
         self.rag_manager = rag_manager
         self.embedding_status = {}
-        self._init_drugs_db()
-
-    def _init_drugs_db(self):
-        """Initialize the shared drugs metadata SQLite database."""
-        conn = sqlite3.connect(settings.DRUGS_DB)
-        try:
-            conn.execute('''CREATE TABLE IF NOT EXISTS processed_drugs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                drug_name TEXT,
-                generic_name TEXT,
-                therapeutic_class TEXT,
-                dosage_form TEXT,
-                strength TEXT,
-                indication TEXT,
-                plan_id TEXT,
-                source_pdf TEXT,
-                page_number INTEGER,
-                extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-            conn.commit()
-        finally:
-            conn.close()
+        # SQLModel handles table creation via init_db() in main.py
 
     def get_pdf_path(self, filename: str) -> str:
         return str(settings.PDF_DIR / filename)
@@ -83,14 +64,15 @@ class DatabaseService:
             del self.embedding_status[filename]
             deleted_items.append('embedding status')
             
-        # Clean up related records in drugs.db
+        # Clean up related records in SQLModel DB
         try:
-            conn = sqlite3.connect(settings.DRUGS_DB)
-            conn.execute("DELETE FROM processed_drugs WHERE plan_id = ?", (db_name,))
-            conn.commit()
-            conn.close()
+            with Session(engine) as session:
+                statement = delete(ProcessedDrug).where(ProcessedDrug.plan_id == db_name)
+                session.exec(statement)
+                session.commit()
             deleted_items.append('metadata records')
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to delete metadata: {e}")
             pass
 
         return deleted_items, errors
@@ -141,114 +123,103 @@ class DatabaseService:
                 logger.warning(f"No drugs extracted from {filename}")
                 return
 
-            conn = sqlite3.connect(settings.DRUGS_DB)
-            # Clear existing drugs for this plan to avoid duplicates
-            conn.execute("DELETE FROM processed_drugs WHERE plan_id = ?", (plan_id,))
-            
-            for drug in drugs:
-                conn.execute('''
-                    INSERT INTO processed_drugs (drug_name, generic_name, therapeutic_class, dosage_form, strength, plan_id, source_pdf)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    drug.get('drug_name'),
-                    drug.get('generic_name'),
-                    drug.get('therapeutic_class'),
-                    drug.get('dosage_form'),
-                    drug.get('strength'),
-                    plan_id,
-                    filename
-                ))
-            conn.commit()
-            conn.close()
+            with Session(engine) as session:
+                # Clear existing drugs for this plan to avoid duplicates
+                statement = delete(ProcessedDrug).where(ProcessedDrug.plan_id == plan_id)
+                session.exec(statement)
+                
+                for drug in drugs:
+                    processed_drug = ProcessedDrug(
+                        drug_name=drug.get('drug_name'),
+                        generic_name=drug.get('generic_name'),
+                        therapeutic_class=drug.get('therapeutic_class'),
+                        dosage_form=drug.get('dosage_form'),
+                        strength=drug.get('strength'),
+                        plan_id=plan_id,
+                        source_pdf=filename
+                    )
+                    session.add(processed_drug)
+                session.commit()
             logger.info(f"Successfully cached {len(drugs)} drugs from {filename}")
         except Exception as e:
-            logger.error(f"Failed to cache drugs to SQLite: {e}")
+            logger.error(f"Failed to cache drugs to SQLModel: {e}")
 
     def get_status(self, filename: str) -> str:
         return self.embedding_status.get(filename, "not_found")
 
     async def get_database_stats(self, database_id: str) -> Dict[str, Any]:
-        """Fetch drug count and generic percentage using optimized SQL queries."""
-        conn = sqlite3.connect(settings.DRUGS_DB)
-        cursor = conn.cursor()
+        """Fetch drug count and generic percentage using optimized SQLModel queries."""
         try:
-            # Get total count
-            cursor.execute('SELECT COUNT(*) FROM processed_drugs WHERE plan_id = ?', (database_id,))
-            drug_count = cursor.fetchone()[0]
-            
-            # Get generic count
-            cursor.execute('''
-                SELECT COUNT(*) FROM processed_drugs 
-                WHERE plan_id = ? 
-                AND LOWER(TRIM(drug_name)) = LOWER(TRIM(generic_name))
-            ''', (database_id,))
-            generic_count = cursor.fetchone()[0]
-            
-            generic_percent = (generic_count / drug_count * 100) if drug_count > 0 else 0.0
-            
-            return {
-                'drugCount': drug_count,
-                'genericPercent': round(generic_percent, 1)
-            }
+            with Session(engine) as session:
+                # Get total count
+                count_stmt = select(func.count()).select_from(ProcessedDrug).where(ProcessedDrug.plan_id == database_id)
+                drug_count = session.exec(count_stmt).one()
+                
+                # Get generic count (where name equals generic name)
+                generic_stmt = select(func.count()).select_from(ProcessedDrug).where(
+                    ProcessedDrug.plan_id == database_id,
+                    func.lower(func.trim(ProcessedDrug.drug_name)) == func.lower(func.trim(ProcessedDrug.generic_name))
+                )
+                generic_count = session.exec(generic_stmt).one()
+                
+                generic_percent = (generic_count / drug_count * 100) if drug_count > 0 else 0.0
+                
+                return {
+                    'drugCount': drug_count,
+                    'genericPercent': round(generic_percent, 1)
+                }
         except Exception as e:
             logger.error(f"Error fetching database stats: {e}")
             return {'drugCount': 0, 'genericPercent': 0.0}
-        finally:
-            conn.close()
 
     async def search_drugs(self, query: str) -> List[Dict[str, Any]]:
         """Search for drugs across all plan formularies."""
-        conn = sqlite3.connect(settings.DRUGS_DB)
-        cursor = conn.cursor()
         try:
-            pattern = f"%{query}%"
-            cursor.execute('''
-                SELECT DISTINCT drug_name, generic_name, therapeutic_class, strength, dosage_form
-                FROM processed_drugs 
-                WHERE drug_name LIKE ? OR generic_name LIKE ?
-                LIMIT 10
-            ''', (pattern, pattern))
-            rows = cursor.fetchall()
-            return [{
-                'name': r[0],
-                'genericName': r[1],
-                'class': r[2],
-                'strength': r[3],
-                'form': r[4],
-                'availability': 'Formulary'
-            } for r in rows]
+            with Session(engine) as session:
+                # Universal case-insensitive fuzzy search using ILIKE
+                search_term = f"%{query}%"
+                statement = select(ProcessedDrug).where(
+                    or_(
+                        ProcessedDrug.drug_name.ilike(search_term),
+                        ProcessedDrug.generic_name.ilike(search_term),
+                        ProcessedDrug.therapeutic_class.ilike(search_term)
+                    )
+                ).limit(10)
+                
+                results = session.exec(statement).all()
+                return [{
+                    'name': d.drug_name,
+                    'genericName': d.generic_name,
+                    'class': d.therapeutic_class,
+                    'strength': d.strength,
+                    'form': d.dosage_form,
+                    'availability': 'Formulary'
+                } for d in results]
         except Exception as e:
             logger.error(f"Drug search failed: {e}")
             return []
-        finally:
-            conn.close()
 
     async def get_drugs(self, database_id: str) -> List[Dict[str, Any]]:
-        """Fetch drugs from SQLite (faster) or fallback to ChromaDB."""
-        conn = sqlite3.connect(settings.DRUGS_DB)
-        cursor = conn.cursor()
+        """Fetch drugs from SQLModel (faster) or fallback to ChromaDB."""
         try:
-            cursor.execute('''
-                SELECT id, drug_name, generic_name, therapeutic_class, strength, dosage_form 
-                FROM processed_drugs WHERE plan_id = ?
-            ''', (database_id,))
-            rows = cursor.fetchall()
-            if rows:
-                return [{
-                    'id': r[0],
-                    'name': r[1],
-                    'genericName': r[2],
-                    'class': r[3],
-                    'strength': r[4],
-                    'form': r[5],
-                    'availability': 'Formulary'
-                } for r in rows]
-        except Exception:
+            with Session(engine) as session:
+                statement = select(ProcessedDrug).where(ProcessedDrug.plan_id == database_id)
+                results = session.exec(statement).all()
+                if results:
+                    return [{
+                        'id': d.id,
+                        'name': d.drug_name,
+                        'genericName': d.generic_name,
+                        'class': d.therapeutic_class,
+                        'strength': d.strength,
+                        'form': d.dosage_form,
+                        'availability': 'Formulary'
+                    } for d in results]
+        except Exception as e:
+            logger.error(f"Failed to fetch drugs from SQLModel: {e}")
             pass
-        finally:
-            conn.close()
             
-        # Fallback to direct ChromaDB extraction if SQLite is empty
+        # Fallback to direct ChromaDB extraction if SQLModel is empty
         return await self._extract_from_chroma(database_id)
 
     async def _extract_from_chroma(self, database_id: str) -> List[Dict[str, Any]]:

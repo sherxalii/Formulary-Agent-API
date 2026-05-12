@@ -96,6 +96,8 @@ const getDrugIcon = (form) => {
   return DrugIcons.Default;
 };
 
+import { motion } from 'framer-motion';
+
 const DrugCard = React.memo(({ drug, onView, onBookmark, onRemove, bookmarked }) => {
   const subText = drug.genericName
     ? `${drug.genericName} • ${drug.form || 'N/A'}`
@@ -108,7 +110,14 @@ const DrugCard = React.memo(({ drug, onView, onBookmark, onRemove, bookmarked })
   const availability = drug.availability || (drug.isInsured ? 'Formulary' : 'Alternative');
 
   return (
-    <article className="rx-card" role="article">
+    <motion.article 
+      className="rx-card glass-card hover-lift" 
+      role="article"
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.4 }}
+    >
 
       {/* ── Top ── */}
       <div className="rx-card-top" style={{ padding: '12px 14px', borderBottom: '1px solid #f8fafc' }}>
@@ -319,7 +328,7 @@ const DrugCard = React.memo(({ drug, onView, onBookmark, onRemove, bookmarked })
         )}
       </div>
 
-    </article>
+    </motion.article>
   );
 });
 
