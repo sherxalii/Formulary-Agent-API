@@ -53,3 +53,4 @@ opentelemetry-instrumentation-fastapi
 opentelemetry-exporter-otlp
 psycopg2-binary
 fastapi-mail
+resend
